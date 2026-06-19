@@ -94,7 +94,7 @@ func (wr *writer) writeUint64(tag uint8, v uint64) {
 
 func (wr *writer) writeFloat32(tag uint8, v float32) {
 	var b [4]byte
-	math.Float32bits(v)
+	binary.LittleEndian.PutUint32(b[:], math.Float32bits(v))
 	wr.writeBytes(tag, b[:])
 }
 

@@ -6,6 +6,24 @@ import (
 	"testing"
 )
 
+func TestFloat32RoundTrip(t *testing.T) {
+	type payload struct {
+		F float32 `tlv8:"1"`
+	}
+	in := payload{F: 153.5}
+	b, err := Marshal(in)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out payload
+	if err := Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.F != in.F {
+		t.Fatalf("got %v want %v (encoded bytes %x)", out.F, in.F, b)
+	}
+}
+
 func TestWriteBytes(t *testing.T) {
 	wr := newWriter()
 
