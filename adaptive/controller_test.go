@@ -164,3 +164,47 @@ func TestControlWriteDisables(t *testing.T) {
 		t.Fatalf("active count = %d, want 0", c.count.Value())
 	}
 }
+
+func TestBrightnessChangeRecomputes(t *testing.T) {
+	a := accessory.NewLightbulb(accessory.Info{Name: "Test"})
+	bright := newBrightness()
+	ct := newColorTemperature()
+	a.Lightbulb.AddC(bright.C)
+	a.Lightbulb.AddC(ct.C)
+	ct.C.Id, bright.C.Id = 7, 3
+	bright.SetValue(100)
+
+	var commanded int64
+	c := NewController(Options{
+		Lightbulb: a.Lightbulb, Brightness: bright, ColorTemperature: ct,
+		SetColorTemperature: func(m int) error { atomic.StoreInt64(&commanded, int64(m)); return nil },
+		Now:                 func() time.Time { return hapEpoch.Add(5 * time.Minute) },
+	})
+
+	// Flat temperature 300 with adjustment factor -1 -> mired = 300 - clamp(brightness).
+	w := controlWrite{Update: &updateRequest{Config: valueTransitionConfig{
+		IID: 7, Enabled: 1,
+		Parameters: transitionParameters{TransitionID: make([]byte, 16), StartTime: make([]byte, 8)},
+		Curve: curveConfig{
+			Entries: []curveEntryTLV{
+				{AdjustmentFactor: -1, Temperature: 300, TransitionOffset: 0},
+				{AdjustmentFactor: -1, Temperature: 300, TransitionOffset: 600000},
+			},
+			AdjustmentIID: 3, MultiplierRange: multiplierRange{Min: 10, Max: 100},
+		},
+		UpdateInterval: 60000, NotifyIntervalThreshold: 600000,
+	}}}
+	b, _ := tlv8.Marshal(w)
+	c.handleControlWrite(base64.StdEncoding.EncodeToString(b), (*http.Request)(nil))
+	if got := atomic.LoadInt64(&commanded); got != 200 { // 300 - 100
+		t.Fatalf("after enable commanded = %d, want 200", got)
+	}
+
+	bright.SetValue(50)
+	c.HandleBrightnessChanged()
+	if got := atomic.LoadInt64(&commanded); got != 250 { // 300 - 50
+		t.Fatalf("after dim commanded = %d, want 250", got)
+	}
+
+	c.Disable() // stop the background timer
+}
