@@ -286,6 +286,15 @@ func clampCT(ct *characteristic.ColorTemperature, v int) int {
 	return v
 }
 
+// HandleBrightnessChanged recomputes the colour temperature for the current
+// brightness. The host app calls this when brightness changes (warm-on-dim).
+// No-op when AL is inactive.
+func (c *Controller) HandleBrightnessChanged() {
+	if c.IsActive() {
+		c.tick()
+	}
+}
+
 // --- Stubs replaced in later tasks ---
 
 func (c *Controller) buildControlReadValue() ([]byte, error) { return []byte{}, nil }
