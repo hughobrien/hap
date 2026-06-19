@@ -279,3 +279,59 @@ func TestSerializeWhenInactive(t *testing.T) {
 		t.Fatal("restore(nil) must not activate")
 	}
 }
+
+func TestControlReadValueWhenActive(t *testing.T) {
+	a := accessory.NewLightbulb(accessory.Info{Name: "Test"})
+	bright := newBrightness()
+	ct := newColorTemperature()
+	a.Lightbulb.AddC(bright.C)
+	a.Lightbulb.AddC(ct.C)
+	ct.C.Id, bright.C.Id = 7, 3
+	bright.SetValue(100)
+
+	c := NewController(Options{
+		Lightbulb: a.Lightbulb, Brightness: bright, ColorTemperature: ct,
+		SetColorTemperature: func(int) error { return nil },
+		Now:                 func() time.Time { return hapEpoch.Add(time.Minute) },
+	})
+	c.handleControlWrite(enablePayload(7, 3, hapEpoch.UnixMilli()), (*http.Request)(nil))
+
+	b, err := c.buildControlReadValue()
+	if err != nil {
+		t.Fatalf("read value: %v", err)
+	}
+	if len(b) == 0 {
+		t.Fatal("expected non-empty read value when active")
+	}
+	// It must be decodable back into the read-response shape and preserve the curve.
+	var rr readResponse
+	if err := tlv8.Unmarshal(b, &rr); err != nil {
+		t.Fatalf("decode read response: %v", err)
+	}
+	if rr.Config.IID != 7 {
+		t.Fatalf("iid = %d, want 7", rr.Config.IID)
+	}
+	if len(rr.Config.Curve.Entries) != 2 {
+		t.Fatalf("curve entries = %d, want 2", len(rr.Config.Curve.Entries))
+	}
+	if rr.Config.Curve.Entries[1].Temperature != 300 {
+		t.Fatalf("entry[1] temp = %v, want 300 (float32 encode must work)", rr.Config.Curve.Entries[1].Temperature)
+	}
+	c.Disable()
+}
+
+func TestControlReadValueWhenInactive(t *testing.T) {
+	a := accessory.NewLightbulb(accessory.Info{Name: "Test"})
+	bright := newBrightness()
+	ct := newColorTemperature()
+	a.Lightbulb.AddC(bright.C)
+	a.Lightbulb.AddC(ct.C)
+	c := NewController(Options{
+		Lightbulb: a.Lightbulb, Brightness: bright, ColorTemperature: ct,
+		SetColorTemperature: func(int) error { return nil },
+	})
+	b, err := c.buildControlReadValue()
+	if err != nil || len(b) != 0 {
+		t.Fatalf("expected empty read value when inactive, got %d bytes err=%v", len(b), err)
+	}
+}
