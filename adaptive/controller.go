@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brutella/hap/characteristic"
+	"github.com/brutella/hap/log"
 	"github.com/brutella/hap/service"
 	"github.com/brutella/hap/tlv8"
 )
@@ -121,6 +122,9 @@ func (c *Controller) handleControlWrite(v interface{}, r *http.Request) (interfa
 	if !ok {
 		return nil, -70410
 	}
+	// Raw transition-control payload, for reverse-engineering / golden-test
+	// capture. Gated: emits only when hap debug logging is enabled.
+	log.Debug.Printf("adaptive: transition control write %s", str)
 	raw, err := base64.StdEncoding.DecodeString(str)
 	if err != nil {
 		return nil, -70410
