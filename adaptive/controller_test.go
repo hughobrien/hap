@@ -208,3 +208,74 @@ func TestBrightnessChangeRecomputes(t *testing.T) {
 
 	c.Disable() // stop the background timer
 }
+
+func TestSerializeRestore(t *testing.T) {
+	a := accessory.NewLightbulb(accessory.Info{Name: "Test"})
+	bright := newBrightness()
+	ct := newColorTemperature()
+	a.Lightbulb.AddC(bright.C)
+	a.Lightbulb.AddC(ct.C)
+	ct.C.Id, bright.C.Id = 7, 3
+	bright.SetValue(100)
+
+	c := NewController(Options{
+		Lightbulb: a.Lightbulb, Brightness: bright, ColorTemperature: ct,
+		SetColorTemperature: func(int) error { return nil },
+		Now:                 func() time.Time { return hapEpoch.Add(5 * time.Minute) },
+	})
+	c.handleControlWrite(enablePayload(7, 3, hapEpoch.UnixMilli()), (*http.Request)(nil))
+
+	blob, ok := c.Serialize()
+	if !ok {
+		t.Fatal("expected serialized state when active")
+	}
+	c.Disable()
+
+	// Fresh controller, restore.
+	a2 := accessory.NewLightbulb(accessory.Info{Name: "Test2"})
+	bright2 := newBrightness()
+	ct2 := newColorTemperature()
+	a2.Lightbulb.AddC(bright2.C)
+	a2.Lightbulb.AddC(ct2.C)
+	ct2.C.Id, bright2.C.Id = 7, 3
+	bright2.SetValue(100)
+
+	var commanded int64
+	c2 := NewController(Options{
+		Lightbulb: a2.Lightbulb, Brightness: bright2, ColorTemperature: ct2,
+		SetColorTemperature: func(m int) error { atomic.StoreInt64(&commanded, int64(m)); return nil },
+		Now:                 func() time.Time { return hapEpoch.Add(5 * time.Minute) },
+	})
+	if err := c2.Restore(blob); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if !c2.IsActive() {
+		t.Fatal("expected active after restore")
+	}
+	// At the same Now used at enable, offset = 0 -> curve start 200 mired (flat ramp 200->300, brightness factor 0).
+	if got := atomic.LoadInt64(&commanded); got != 200 {
+		t.Fatalf("restored commanded = %d, want 200", got)
+	}
+	c2.Disable()
+}
+
+func TestSerializeWhenInactive(t *testing.T) {
+	a := accessory.NewLightbulb(accessory.Info{Name: "Test"})
+	bright := newBrightness()
+	ct := newColorTemperature()
+	a.Lightbulb.AddC(bright.C)
+	a.Lightbulb.AddC(ct.C)
+	c := NewController(Options{
+		Lightbulb: a.Lightbulb, Brightness: bright, ColorTemperature: ct,
+		SetColorTemperature: func(int) error { return nil },
+	})
+	if _, ok := c.Serialize(); ok {
+		t.Fatal("expected ok=false when inactive")
+	}
+	if err := c.Restore(nil); err != nil {
+		t.Fatalf("restore(nil) should be a no-op, got %v", err)
+	}
+	if c.IsActive() {
+		t.Fatal("restore(nil) must not activate")
+	}
+}
