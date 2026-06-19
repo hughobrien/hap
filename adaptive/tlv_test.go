@@ -62,3 +62,24 @@ func TestDecodeUpdateRoundTrip(t *testing.T) {
 		t.Fatalf("notify_interval_threshold = %d, want 600000", out.Update.Config.NotifyIntervalThreshold)
 	}
 }
+
+func TestBuildStatusResponse(t *testing.T) {
+	params := transitionParameters{
+		TransitionID: make([]byte, 16),
+		StartTime:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
+	}
+	b, err := buildStatusResponse(7, params, 1234)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	var out statusResponse
+	if err := tlv8.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.Status.IID != 7 {
+		t.Fatalf("iid = %d, want 7", out.Status.IID)
+	}
+	if out.Status.TimeSinceStart != 1234 {
+		t.Fatalf("timeSinceStart = %d, want 1234", out.Status.TimeSinceStart)
+	}
+}

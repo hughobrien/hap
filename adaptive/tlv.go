@@ -6,6 +6,8 @@ package adaptive
 import (
 	"encoding/binary"
 	"time"
+
+	"github.com/brutella/hap/tlv8"
 )
 
 // hapEpoch is 2001-01-01 00:00:00 UTC. HomeKit transition start times are
@@ -85,6 +87,18 @@ type valueConfigStatus struct {
 	IID            uint64               `tlv8:"1"`
 	Parameters     transitionParameters `tlv8:"2"`
 	TimeSinceStart uint64               `tlv8:"3"`
+}
+
+// buildStatusResponse encodes the write-response / read-response body that the
+// controller returns after an UPDATE or READ command.
+func buildStatusResponse(iid uint64, params transitionParameters, timeSinceStart uint64) ([]byte, error) {
+	return tlv8.Marshal(statusResponse{
+		Status: valueConfigStatus{
+			IID:            iid,
+			Parameters:     params,
+			TimeSinceStart: timeSinceStart,
+		},
+	})
 }
 
 // startTimeMillis converts the 8-byte LE start-time buffer to epoch millis.
