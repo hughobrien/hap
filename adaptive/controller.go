@@ -2,6 +2,7 @@ package adaptive
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
@@ -293,6 +294,40 @@ func (c *Controller) HandleBrightnessChanged() {
 	if c.IsActive() {
 		c.tick()
 	}
+}
+
+// Serialize returns a JSON blob of the active transition, or ok=false if AL is
+// inactive. The host app persists this (e.g. in the HAP store) and passes it to
+// Restore on startup.
+func (c *Controller) Serialize() ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == nil {
+		return nil, false
+	}
+	b, err := json.Marshal(c.active)
+	if err != nil {
+		return nil, false
+	}
+	return b, true
+}
+
+// Restore re-activates a transition previously returned by Serialize and resumes
+// ticking. A nil/empty blob is a no-op.
+func (c *Controller) Restore(blob []byte) error {
+	if len(blob) == 0 {
+		return nil
+	}
+	var at activeTransition
+	if err := json.Unmarshal(blob, &at); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.active = &at
+	c.mu.Unlock()
+	c.count.SetValue(1)
+	c.tick()
+	return nil
 }
 
 // --- Stubs replaced in later tasks ---
