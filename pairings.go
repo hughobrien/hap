@@ -96,8 +96,17 @@ func (srv *Server) pairings(res http.ResponseWriter, req *http.Request) {
 
 		p, err := srv.st.Pairing(d.Identifier)
 		if err != nil {
-			log.Info.Println(err)
-			tlv8Error(res, M2, TlvErrorUnknown)
+			// Per Apple's HomeKitADK (HAPPairingPairingsRemovePairingGetM2):
+			// removing a pairing that does not exist MUST return success —
+			// removal is idempotent. Returning an error makes iOS retry the
+			// cleanup indefinitely.
+			log.Debug.Println("delete pairing: no such pairing, returning success", d.Identifier)
+			resp := struct {
+				State byte `tlv8:"6"`
+			}{
+				State: M2,
+			}
+			tlv8OK(res, resp)
 			return
 		}
 

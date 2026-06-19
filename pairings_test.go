@@ -2,6 +2,7 @@ package hap
 
 import (
 	"github.com/brutella/hap/accessory"
+	"github.com/brutella/hap/tlv8"
 
 	"bytes"
 	"encoding/hex"
@@ -55,5 +56,56 @@ func TestPairingsHandlerRequests(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("%s: handler returned HTTP %d, want 200 (request rejected — tlv8 unmarshal EOF on a valid request)", tc.name, rec.Code)
 		}
+	}
+}
+
+// TestRemovePairingNonExistentReturnsSuccess covers the RemovePairing handler
+// when the target pairing does not exist. Per Apple's HomeKitADK
+// (HAPPairingPairingsRemovePairingGetM2), the accessory MUST return success in
+// that case — removal is idempotent. The handler previously returned
+// TlvErrorUnknown, which makes iOS retry the cleanup indefinitely.
+func TestRemovePairingNonExistentReturnsSuccess(t *testing.T) {
+	a := accessory.New(accessory.Info{Name: "Test"}, accessory.TypeOutlet)
+	srv, err := NewServer(NewMemStore(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const addr = "192.0.2.10:50000"
+	srv.mux.Lock()
+	srv.sess[addr] = &session{Pairing: Pairing{Name: "admin", Permission: PermissionAdmin}}
+	srv.mux.Unlock()
+
+	body, err := tlv8.Marshal(struct {
+		Method     byte   `tlv8:"0"`
+		Identifier string `tlv8:"1"`
+		State      byte   `tlv8:"6"`
+	}{Method: MethodDeletePairing, Identifier: "DOES-NOT-EXIST", State: M1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/pairings", bytes.NewReader(body))
+	req.RemoteAddr = addr
+	rec := httptest.NewRecorder()
+
+	srv.pairings(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d, want 200", rec.Code)
+	}
+
+	var resp struct {
+		State byte `tlv8:"6"`
+		Error byte `tlv8:"7,optional"`
+	}
+	if err := tlv8.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Error != 0 {
+		t.Fatalf("response error = %d, want 0 (success): removing a non-existent pairing must succeed", resp.Error)
+	}
+	if resp.State != M2 {
+		t.Fatalf("response state = %d, want M2 (%d)", resp.State, M2)
 	}
 }
