@@ -330,6 +330,52 @@ func (c *Controller) Restore(blob []byte) error {
 	return nil
 }
 
-// --- Stubs replaced in later tasks ---
+// readResponse mirrors the UPDATE configuration shape, wrapped in tag 1.
+type readResponse struct {
+	Config readConfig `tlv8:"1"`
+}
 
-func (c *Controller) buildControlReadValue() ([]byte, error) { return []byte{}, nil }
+type readConfig struct {
+	IID                     uint64               `tlv8:"1"`
+	Parameters              transitionParameters `tlv8:"2"`
+	Unknown3                byte                 `tlv8:"3"`
+	Curve                   curveConfig          `tlv8:"5"`
+	UpdateInterval          uint16               `tlv8:"6"`
+	NotifyIntervalThreshold uint32               `tlv8:"8"`
+}
+
+func (c *Controller) buildControlReadValue() ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.active == nil {
+		return []byte{}, nil
+	}
+	at := c.active
+
+	entries := make([]curveEntryTLV, len(at.Curve))
+	for i, p := range at.Curve {
+		entries[i] = curveEntryTLV{
+			AdjustmentFactor: float32(p.AdjustmentFactor),
+			Temperature:      float32(p.Temperature),
+			TransitionOffset: uint32(p.TransitionTime),
+			Duration:         uint32(p.Duration),
+		}
+	}
+
+	return tlv8.Marshal(readResponse{Config: readConfig{
+		IID: at.IID,
+		Parameters: transitionParameters{
+			TransitionID: at.TransitionID,
+			StartTime:    at.StartTimeBuf,
+			Unknown3:     at.Unknown3,
+		},
+		Unknown3: 1,
+		Curve: curveConfig{
+			Entries:         entries,
+			AdjustmentIID:   at.BrightnessIID,
+			MultiplierRange: multiplierRange{Min: uint32(at.Range.Min), Max: uint32(at.Range.Max)},
+		},
+		UpdateInterval:          uint16(at.UpdateInterval.Milliseconds()),
+		NotifyIntervalThreshold: uint32(at.NotifyThreshold.Milliseconds()),
+	}})
+}
