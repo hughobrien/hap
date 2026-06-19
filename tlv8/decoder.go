@@ -221,6 +221,10 @@ func (d *decoder) decode(v interface{}) error {
 					}
 
 					if err == io.EOF {
+						if optional {
+							// absent optional field; leave it unset
+							continue
+						}
 						break
 					}
 
