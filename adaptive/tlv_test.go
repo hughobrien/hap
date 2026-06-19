@@ -52,4 +52,13 @@ func TestDecodeUpdateRoundTrip(t *testing.T) {
 	if out.Update.Config.IID != 7 {
 		t.Fatalf("iid = %d, want 7", out.Update.Config.IID)
 	}
+	if out.Update.Config.Enabled != 1 {
+		t.Fatalf("enabled = %d, want 1", out.Update.Config.Enabled)
+	}
+	if out.Update.Config.UpdateInterval != 60000 {
+		t.Fatalf("update_interval = %d, want 60000", out.Update.Config.UpdateInterval)
+	}
+	if out.Update.Config.NotifyIntervalThreshold != 600000 {
+		t.Fatalf("notify_interval_threshold = %d, want 600000", out.Update.Config.NotifyIntervalThreshold)
+	}
 }
