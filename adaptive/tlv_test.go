@@ -1,10 +1,43 @@
 package adaptive
 
 import (
+	"encoding/hex"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/brutella/hap/tlv8"
 )
+
+// TestDecodeRealCurve decodes a Transition Control write captured from a real
+// Apple home hub (testdata/transition_control_write.hex), guarding the TLV8
+// decode — chunked values and the repeated-entry list format — against actual
+// on-wire bytes rather than only our own round-trips.
+func TestDecodeRealCurve(t *testing.T) {
+	raw, err := os.ReadFile("testdata/transition_control_write.hex")
+	if err != nil {
+		t.Skip("no captured curve available")
+	}
+	b, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatalf("bad hex: %v", err)
+	}
+	var w controlWrite
+	if err := tlv8.Unmarshal(b, &w); err != nil {
+		t.Fatalf("unmarshal real curve: %v", err)
+	}
+	if w.Update == nil {
+		t.Fatal("expected an update transition")
+	}
+	if len(w.Update.Config.Curve.Entries) < 2 {
+		t.Fatalf("expected a multi-point curve, got %d entries", len(w.Update.Config.Curve.Entries))
+	}
+	for i, e := range w.Update.Config.Curve.Entries {
+		if e.Temperature < 50 || e.Temperature > 1000 {
+			t.Fatalf("entry %d temperature %v out of sane mired range", i, e.Temperature)
+		}
+	}
+}
 
 func TestDecodeUpdateRoundTrip(t *testing.T) {
 	in := controlWrite{
