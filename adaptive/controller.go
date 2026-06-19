@@ -379,3 +379,28 @@ func (c *Controller) buildControlReadValue() ([]byte, error) {
 		NotifyIntervalThreshold: uint32(at.NotifyThreshold.Milliseconds()),
 	}})
 }
+
+// EnableForTest enables a flat-temperature Adaptive Lighting transition that
+// holds at temp mired (independent of brightness). It exists so other packages
+// can exercise the controller without constructing a full TLV transition-control
+// payload. Test-only; not used by production code paths.
+func EnableForTest(c *Controller, ctIID, brightIID uint64, temp float32) {
+	c.enable(valueTransitionConfig{
+		IID:     ctIID,
+		Enabled: 1,
+		Parameters: transitionParameters{
+			TransitionID: make([]byte, 16),
+			StartTime:    make([]byte, 8),
+		},
+		Curve: curveConfig{
+			Entries: []curveEntryTLV{
+				{AdjustmentFactor: 0, Temperature: temp, TransitionOffset: 0},
+				{AdjustmentFactor: 0, Temperature: temp, TransitionOffset: 3600000},
+			},
+			AdjustmentIID:   brightIID,
+			MultiplierRange: multiplierRange{Min: 10, Max: 100},
+		},
+		UpdateInterval:          60000,
+		NotifyIntervalThreshold: 600000,
+	})
+}
